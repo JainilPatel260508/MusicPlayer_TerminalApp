@@ -2,63 +2,60 @@ const fs = require('fs');
 const process = require('process');
 const { spawn } = require('child_process');
 
+const progressBar = require('./progressBar');
+
 // Selected song
 let selected = 0;
 
 // Songs folder
 const path = './songs';
 
+// Current player
+let currentPlayer = null;
+
+// Pause state
+let isPaused = false;
+
+// Current song
+let currentSong = null;
+
+// Current progress
+let currentProgress = {
+    bar: '[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%',
+    elapsed: '00:00',
+    duration: '00:00'
+};
+
 // Get all MP3 files
 const mp3Files = fs
     .readdirSync(path)
     .filter(file => file.toLowerCase().endsWith('.mp3'));
-//progrerss bar
-// function progrerssBar(duration, player) {
-//     let progress = 0;
-//     const interval = setInterval(() => {
-//         if (!player || player.killed) {
-//             clearInterval(interval);
-//             return;
-//         }
-
-//         progress += 1;
-
-//         const percentage = Math.min(
-//             (progress / duration) * 100,
-//             100
-//         );
-
-//         const barLength = 30;
-//         const filledLength = Math.round(
-//             (barLength * percentage) / 100
-//         );
-
-//         const bar = '█'.repeat(filledLength) +
-//             '-'.repeat(barLength - filledLength);
-
-//         process.stdout.write(
-//             `\r[${bar}] ${percentage.toFixed(2)}%`
-//         );
-
-//         if (percentage >= 100) {
-//             clearInterval(interval);
-//             process.stdout.write('\n');
-//         }
-//     }, 1000);
-// }
-
-
-// Current player and pause state
-let currentPlayer = null;
-let isPaused = false;
 
 // Clear terminal
 function clearConsole() {
     process.stdout.write('\x1Bc');
 }
 
+// Get song name
+function getSongName(file) {
+    return file.replace(/\.mp3$/i, '');
+}
+
+// Update progress
+function updateProgress(progress) {
+
+    currentProgress = progress;
+
+    if (!currentPlayer) {
+        return;
+    }
+
+    renderPlayer();
+}
+
 // Stop current player
 function killCurrentPlayer() {
+
     if (!currentPlayer) {
         return;
     }
@@ -66,24 +63,42 @@ function killCurrentPlayer() {
     const player = currentPlayer;
 
     try {
-        // Resume before stopping if paused
+
         if (isPaused) {
-            process.kill(player.pid, 'SIGCONT');
+            process.kill(
+                player.pid,
+                'SIGCONT'
+            );
         }
 
-        process.kill(player.pid, 'SIGTERM');
+        process.kill(
+            player.pid,
+            'SIGTERM'
+        );
+
     } catch (error) {
         // Ignore if process already stopped
     }
 
     if (currentPlayer === player) {
+
         currentPlayer = null;
         isPaused = false;
+        currentSong = null;
+
+        progressBar.stopProgress();
+
+        currentProgress = {
+            bar: '[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%',
+            elapsed: '00:00',
+            duration: '00:00'
+        };
     }
 }
 
-// Exit music player
+// Exit player
 function exitPlayer() {
+
     killCurrentPlayer();
 
     process.stdin.setRawMode(false);
@@ -91,85 +106,146 @@ function exitPlayer() {
 
     clearConsole();
 
-    console.log('\n👋 Exiting the Music Player. Goodbye!\n');
+    console.log(
+        '\n👋 Exiting the Music Player. Goodbye!\n'
+    );
 
     process.exit(0);
 }
 
-// Get song name without .mp3
-function getSongName(file) {
-    return file.replace(/\.mp3$/i, '');
-}
-
-// Play selected song
+// Play song
 function playSong(songPath, songName) {
-    // Stop previous song
+
     killCurrentPlayer();
 
-    clearConsole();
-
-    console.log('\n🎶 MUSIC PLAYER 🎶');
-    console.log('==================\n');
-
-    console.log(`🎧 Now playing: ${songName}`);
-    // progrerssBar(10, currentPlayer); // Assuming a fixed duration of 30 seconds for demonstration
-
-    // Start afplay
-    const player = spawn('afplay', [songPath]);
-
-    currentPlayer = player;
+    currentSong = songName;
     isPaused = false;
 
-    console.log(`\n🎵 PID: ${player.pid}`);
+    // Get progress information first
+    progressBar.startProgress(
+        songPath,
+        updateProgress
+    );
 
-    console.log('\n🎮 Controls:');
-    console.log('⏸️  P → Pause');
-    console.log('▶️  R → Resume');
-    console.log('⏹️  S → Stop');
-    console.log('❌ ESC → Exit');
+    // Start afplay
+    const player = spawn(
+        'afplay',
+        [songPath]
+    );
+
+    currentPlayer = player;
+
+    // Display player
+    renderPlayer();
 
     // Handle player error
-    player.on('error', (err) => {
-        console.log('\n❌ Error playing song:', err.message);
+    player.on('error', (error) => {
+
+        progressBar.stopProgress();
+
+        console.log(
+            '\n❌ Error playing song:',
+            error.message
+        );
 
         if (currentPlayer === player) {
             currentPlayer = null;
             isPaused = false;
         }
 
-        setTimeout(renderMenu, 1000);
+        setTimeout(() => {
+            renderMenu();
+        }, 1000);
     });
 
     // Handle song completion
     player.on('close', (code) => {
+
         if (currentPlayer !== player) {
             return;
         }
+
+        progressBar.stopProgress();
 
         currentPlayer = null;
         isPaused = false;
 
         if (code === 0) {
-            console.log('\n✅ Song finished.');
+
+            console.log(
+                '\n\n✅ Song finished.'
+            );
         }
 
-        setTimeout(renderMenu, 500);
+        setTimeout(() => {
+            renderMenu();
+        }, 1000);
     });
+}
+
+// Display player
+function renderPlayer() {
+
+    clearConsole();
+
+    console.log('\n🎶 MUSIC PLAYER 🎶');
+    console.log('==================\n');
+
+    console.log(
+        `🎧 Now playing: ${currentSong}\n`
+    );
+
+    console.log(
+        `🎵 ${currentProgress.bar}`
+    );
+
+    console.log(
+        `   ${currentProgress.elapsed} / ${currentProgress.duration}`
+    );
+
+    console.log('\n');
+
+    if (isPaused) {
+        console.log('⏸️  PAUSED');
+    } else {
+        console.log('▶️  PLAYING');
+    }
+
+    console.log('\n==================');
+
+    console.log('🎮 Controls:');
+
+    console.log('P → Pause');
+    console.log('R → Resume');
+    console.log('S → Stop');
+    console.log('ESC → Exit');
+
+    console.log('==================');
 }
 
 // Pause song
 function pauseSong() {
+
     if (!currentPlayer) {
-        console.log('\n❌ No song is currently playing.');
+
+        console.log(
+            '\n❌ No song is currently playing.'
+        );
+
         return;
     }
 
     if (isPaused) {
-        console.log('\n⚠️ Song is already paused.');
+
+        console.log(
+            '\n⚠️ Song is already paused.'
+        );
+
         return;
     }
 
     try {
+
         process.kill(
             currentPlayer.pid,
             'SIGSTOP'
@@ -177,8 +253,12 @@ function pauseSong() {
 
         isPaused = true;
 
-        console.log('\n⏸️ Song paused.');
+        progressBar.pauseProgress();
+
+        renderPlayer();
+
     } catch (error) {
+
         console.log(
             '\n❌ Unable to pause song:',
             error.message
@@ -188,17 +268,27 @@ function pauseSong() {
 
 // Resume song
 function resumeSong() {
+
     if (!currentPlayer) {
-        console.log('\n❌ No song is currently playing.');
+
+        console.log(
+            '\n❌ No song is currently playing.'
+        );
+
         return;
     }
 
     if (!isPaused) {
-        console.log('\n⚠️ Song is already playing.');
+
+        console.log(
+            '\n⚠️ Song is already playing.'
+        );
+
         return;
     }
 
     try {
+
         process.kill(
             currentPlayer.pid,
             'SIGCONT'
@@ -206,8 +296,14 @@ function resumeSong() {
 
         isPaused = false;
 
-        console.log('\n▶️ Song resumed.');
+        progressBar.resumeProgress(
+            updateProgress
+        );
+
+        renderPlayer();
+
     } catch (error) {
+
         console.log(
             '\n❌ Unable to resume song:',
             error.message
@@ -217,44 +313,68 @@ function resumeSong() {
 
 // Stop song
 function stopSong() {
+
     if (!currentPlayer) {
-        console.log('\n❌ No song is currently playing.');
+
+        console.log(
+            '\n❌ No song is currently playing.'
+        );
+
         return;
     }
 
     killCurrentPlayer();
 
-    console.log('\n⏹️ Song stopped.');
+    renderMenu();
 }
 
 // Display menu
 function renderMenu() {
+
     clearConsole();
 
-    console.log('\n🎶 Welcome to the Music Player! 🎶');
-    console.log('===================================\n');
+    console.log(
+        '\n🎶 Welcome to the Music Player! 🎶'
+    );
 
-    console.log('Use ↑ ↓ to select a song');
-    console.log('Press ENTER to play\n');
+    console.log(
+        '===================================\n'
+    );
+
+    console.log(
+        'Use ↑ ↓ to select a song'
+    );
+
+    console.log(
+        'Press ENTER to play\n'
+    );
 
     for (let i = 0; i < mp3Files.length; i++) {
-        const songName = getSongName(mp3Files[i]);
+
+        const songName =
+            getSongName(mp3Files[i]);
 
         if (i === selected) {
+
             // Highlight selected song
             process.stdout.write(
                 `\x1b[7m  ❯ ${i + 1}. ${songName}  \x1b[0m\n`
             );
+
         } else {
+
             console.log(
                 `    ${i + 1}. ${songName}`
             );
         }
     }
 
-    console.log('\n===================================');
+    console.log(
+        '\n==================================='
+    );
 
     console.log('🎮 Controls:');
+
     console.log('↑ ↓ → Select song');
     console.log('ENTER → Play selected song');
     console.log('P → Pause');
@@ -262,20 +382,25 @@ function renderMenu() {
     console.log('S → Stop');
     console.log('ESC → Exit');
 
-    console.log('===================================');
+    console.log(
+        '==================================='
+    );
 }
 
-// Handle keyboard input
+// Handle keyboard
 function handleKey(key) {
 
-    // ESC key
+    // ESC
     if (key === '\x1b') {
+
         exitPlayer();
+
         return;
     }
 
     // Up arrow
     if (key === '\x1b[A') {
+
         selected--;
 
         if (selected < 0) {
@@ -283,11 +408,13 @@ function handleKey(key) {
         }
 
         renderMenu();
+
         return;
     }
 
     // Down arrow
     if (key === '\x1b[B') {
+
         selected++;
 
         if (selected >= mp3Files.length) {
@@ -295,18 +422,21 @@ function handleKey(key) {
         }
 
         renderMenu();
+
         return;
     }
 
-    // Enter key
-    if (key === '\r' || key === '\n') {
-        const selectedSong = mp3Files[selected];
+    // Enter
+    if (
+        key === '\r' ||
+        key === '\n'
+    ) {
 
-        const songPath = `${path}/${selectedSong}`;
-        // progressBar(0, currentPlayer);
-        console.log(
-            `\n🎧 Now playing: ${getSongName(selectedSong)}`
-        );
+        const selectedSong =
+            mp3Files[selected];
+
+        const songPath =
+            `${path}/${selectedSong}`;
 
         playSong(
             songPath,
@@ -316,25 +446,30 @@ function handleKey(key) {
         return;
     }
 
-    // Convert key to lowercase
+    // Lowercase input
     const input = key.toLowerCase();
 
     // Pause
     if (input === 'p') {
+
         pauseSong();
+
         return;
     }
 
     // Resume
     if (input === 'r') {
+
         resumeSong();
+
         return;
     }
 
     // Stop
     if (input === 's') {
+
         stopSong();
-        renderMenu();
+
         return;
     }
 
@@ -346,11 +481,14 @@ function handleKey(key) {
         userInput >= 1 &&
         userInput <= mp3Files.length
     ) {
+
         selected = userInput - 1;
 
-        const selectedSong = mp3Files[selected];
+        const selectedSong =
+            mp3Files[selected];
 
-        const songPath = `${path}/${selectedSong}`;
+        const songPath =
+            `${path}/${selectedSong}`;
 
         playSong(
             songPath,
@@ -361,6 +499,7 @@ function handleKey(key) {
 
 // Check songs
 if (mp3Files.length === 0) {
+
     console.log(
         '❌ No MP3 files found inside the songs folder.'
     );
@@ -377,7 +516,10 @@ process.stdin.resume();
 process.stdin.setEncoding('utf8');
 
 // Listen for keyboard input
-process.stdin.on('data', handleKey);
+process.stdin.on(
+    'data',
+    handleKey
+);
 
 // Handle Ctrl + C
 process.on('SIGINT', () => {
