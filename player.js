@@ -29,7 +29,8 @@ let currentProgress = {
 // Get all MP3 files
 const mp3Files = fs
     .readdirSync(path)
-    .filter(file => file.toLowerCase().endsWith('.mp3'));
+    .filter(file => file.toLowerCase().endsWith('.mp3'))
+    .filter(file => progressBar.getDuration(`${path}/${file}`) > 0);
 
 // Clear terminal
 function clearConsole() {

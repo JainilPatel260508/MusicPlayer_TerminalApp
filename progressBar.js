@@ -8,6 +8,10 @@ let timer = null;
 function getDuration(songPath) {
     const result = spawnSync('afinfo', [songPath]);
 
+    if (result.error || result.status !== 0 || !result.stdout) {
+        return 0;
+    }
+
     const output = result.stdout.toString();
 
     const match = output.match(
@@ -135,6 +139,7 @@ function stopProgress() {
 
 // Export functions
 module.exports = {
+    getDuration,
     getProgress,
     startProgress,
     pauseProgress,
