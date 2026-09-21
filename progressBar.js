@@ -1,21 +1,32 @@
 const { spawnSync } = require('child_process');
 
 let duration = 0;
+
 let elapsed = 0;
+
 let timer = null;
 
-// Get song duration
+// Get song duration using macOS afinfo
 function getDuration(songPath) {
-    const result = spawnSync('afinfo', [songPath]);
 
-    if (result.error || result.status !== 0 || !result.stdout) {
+    const result = spawnSync(
+        'afinfo',
+        [songPath]
+    );
+
+    if (
+        result.error ||
+        result.status !== 0 ||
+        !result.stdout
+    ) {
         return 0;
     }
 
     const output = result.stdout.toString();
 
+    // Extract estimated duration
     const match = output.match(
-        /estimated duration:\s*([\d.]+)\s*sec/
+        /estimated duration:\s*([\d.]+)\s*sec/i
     );
 
     if (!match) {
@@ -25,29 +36,43 @@ function getDuration(songPath) {
     return parseFloat(match[1]);
 }
 
-// Format seconds
+// Convert seconds to MM:SS format
 function formatTime(seconds) {
+
     seconds = Math.floor(seconds);
 
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
+    const minutes = Math.floor(
+        seconds / 60
+    );
 
-    return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+    const remainingSeconds =
+        seconds % 60;
+
+    return (
+        `${String(minutes).padStart(2, '0')}:` +
+        `${String(remainingSeconds).padStart(2, '0')}`
+    );
 }
 
 // Create progress bar
 function createProgressBar() {
+
     const barLength = 30;
 
     if (duration <= 0) {
-        return `[${'░'.repeat(barLength)}] 0%`;
+
+        return (
+            `[${'░'.repeat(barLength)}] 0%`
+        );
     }
 
     let progress = elapsed / duration;
 
-    if (progress > 1) {
-        progress = 1;
-    }
+    // Limit progress between 0 and 1
+    progress = Math.max(
+        0,
+        Math.min(progress, 1)
+    );
 
     const filled = Math.floor(
         progress * barLength
@@ -59,38 +84,54 @@ function createProgressBar() {
         '█'.repeat(filled) +
         '░'.repeat(empty);
 
-    const percentage =
-        Math.floor(progress * 100);
+    const percentage = Math.floor(
+        progress * 100
+    );
 
     return `[${bar}] ${percentage}%`;
 }
 
-// Get current progress
+// Get current progress information
 function getProgress() {
+
     return {
+
         bar: createProgressBar(),
+
         elapsed: formatTime(elapsed),
+
         duration: formatTime(duration)
+
     };
 }
 
 // Start progress
 function startProgress(songPath, onUpdate) {
+
+    // Stop any existing timer
     stopProgress();
 
     duration = getDuration(songPath);
+
     elapsed = 0;
 
+    // Display initial progress
     onUpdate(getProgress());
 
+    // Start timer
     timer = setInterval(() => {
 
         elapsed++;
 
+        // Prevent elapsed time from
+        // exceeding the song duration
         if (elapsed >= duration) {
+
             elapsed = duration;
+
         }
 
+        // Update progress
         onUpdate(getProgress());
 
     }, 1000);
@@ -98,15 +139,24 @@ function startProgress(songPath, onUpdate) {
 
 // Pause progress
 function pauseProgress() {
-    if (timer) {
+
+    if (timer !== null) {
+
         clearInterval(timer);
+
         timer = null;
+
     }
 }
 
 // Resume progress
 function resumeProgress(onUpdate) {
-    if (timer || duration <= 0) {
+
+    // Prevent duplicate timers
+    if (
+        timer !== null ||
+        duration <= 0
+    ) {
         return;
     }
 
@@ -117,7 +167,9 @@ function resumeProgress(onUpdate) {
         elapsed++;
 
         if (elapsed >= duration) {
+
             elapsed = duration;
+
         }
 
         onUpdate(getProgress());
@@ -128,21 +180,32 @@ function resumeProgress(onUpdate) {
 // Stop progress
 function stopProgress() {
 
-    if (timer) {
+    if (timer !== null) {
+
         clearInterval(timer);
+
         timer = null;
+
     }
 
     duration = 0;
+
     elapsed = 0;
 }
 
 // Export functions
 module.exports = {
+
     getDuration,
+
     getProgress,
+
     startProgress,
+
     pauseProgress,
+
     resumeProgress,
+
     stopProgress
+
 };
