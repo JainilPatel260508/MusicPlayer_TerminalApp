@@ -31,13 +31,13 @@ mpv --version
 ```text
 Music_Player/
 ├── player.js        # Main application and keyboard controls
-├── progressbar.js    # Duration lookup and progress-bar timer
+├── progressBar.js    # Duration lookup and progress-bar timer
 └── songs/            # Your MP3 files
     ├── song1.mp3
     └── song2.mp3
 ```
 
-> **File names matter:** If your progress module is named `progressbar.js`, the main file should use `const progressBar = require('./progressbar');`. The import must match the actual filename.
+> **File names matter:** If your progress module is named `progressBar.js`, the main file should use `const progressBar = require('./progressbar');`. The import must match the actual filename.
 
 ## Run the player
 
@@ -66,7 +66,7 @@ Music_Player/
 - **`child_process.spawn()`** launches `mpv` in a separate process to play the selected file. Node.js remains free to respond to keyboard input.
 - **mpv IPC** lets Node.js send native pause and resume commands to the audio player. This avoids suspending the entire process with `SIGSTOP`/`SIGCONT`.
 - **`process.stdin` in raw mode** receives keyboard input without waiting for Enter.
-- **`progressbar.js`** reads the duration with `afinfo`, estimates elapsed time with `setInterval()`, and renders a 30-character progress bar.
+- **`progressBar.js`** reads the duration with `afinfo`, estimates elapsed time with `setInterval()`, and renders a 30-character progress bar.
 - The child process's **`close` event** lets the app clean up playback state and return to the menu.
 
 ### Progress calculation
@@ -85,7 +85,7 @@ The original implementation used macOS `afplay` and process signals to pause and
 
 ## Troubleshooting
 
-- **`Cannot find module './player'` or `getProgress is not a function`:** Verify that `player.js` is the main file, `progressbar.js` exports `getProgress`, and `player.js` imports `./progressbar` rather than itself.
+- **`Cannot find module './player'` or `getProgress is not a function`:** Verify that `player.js` is the main file, `progressBar.js` exports `getProgress`, and `player.js` imports `./progressbar` rather than itself.
 - **`spawn mpv ENOENT`:** Install mpv with `brew install mpv`, then run `mpv --version`.
 - **No songs listed:** Confirm that the `songs/` directory exists and contains readable MP3 files.
 - **Keyboard input does not work:** Run the app in an interactive terminal, not an output-only console.
