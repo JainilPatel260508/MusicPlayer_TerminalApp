@@ -1,25 +1,30 @@
 # Terminal Music Player 🎶
 
-A keyboard-controlled music player built with **Node.js** for macOS. It reads MP3 files from a local folder, displays a song-selection menu in the terminal, plays audio using **mpv**, and shows an estimated progress bar.
+A keyboard-controlled music player built with **Node.js** for **macOS**. Browse locally stored MP3 files, play music through **mpv**, control playback without leaving the terminal, and view an estimated progress bar. The playlist supports **Next**, **Previous**, and **automatic playback of the next song**.
 
 ## Features
 
-- Browse local MP3 files using the ↑ and ↓ arrow keys.
-- Play a selected song by pressing **Enter**.
-- Pause, resume, and stop playback with keyboard shortcuts.
-- View the current song, elapsed time, duration, and progress bar.
-- Return to the song menu when playback ends.
+- Browse songs with **↑ / ↓** and play the highlighted song with **Enter**.
+- **Pause**, **resume**, and **stop** using keyboard shortcuts.
+- Skip to the **next** or **previous** song without returning to the menu.
+- **Auto-next:** when a song finishes naturally, the next song starts automatically.
+- **Circular playlist:** Next on the last song goes to the first; Previous on the first goes to the last.
+- Display the current song, elapsed time, total duration, and an estimated progress bar.
+- Keep playback controls responsive while audio plays in a separate process.
 
 ## Requirements
 
-- **macOS** with Node.js installed.
-- **mpv** for audio playback. Install it with Homebrew:
+- **macOS** and **Node.js** installed.
+- **mpv** for audio playback. Install with [Homebrew](https://brew.sh/):
+
   ```bash
   brew install mpv
   ```
-- The macOS `afinfo` utility, which the progress module uses to read audio duration.
 
-Check your installation:
+- The macOS `afinfo` utility, used to read audio duration.
+- An interactive terminal (such as macOS Terminal or the VS Code integrated terminal).
+
+Check your setup:
 
 ```bash
 node --version
@@ -30,67 +35,78 @@ mpv --version
 
 ```text
 Music_Player/
-├── player.js        # Main application and keyboard controls
-├── progressBar.js    # Duration lookup and progress-bar timer
-└── songs/            # Your MP3 files
+├── player.js          # Main app, keyboard controls, playlist, and mpv integration
+├── progressBar.js     # Duration lookup and estimated progress timer
+├── README.md
+└── songs/              # Add your own MP3 files here
     ├── song1.mp3
     └── song2.mp3
 ```
 
-> **File names matter:** If your progress module is named `progressBar.js`, the main file should use `const progressBar = require('./progressbar');`. The import must match the actual filename.
+> **Use the exact filename in your import.** If your file is `progressBar.js`, write `const progressBar = require('./progressBar');` in `player.js`. If the file is instead named `progressbar.js`, use `require('./progressbar')`. Do **not** import `./player` from `player.js` itself.
 
-## Run the player
+## Getting started
 
-1. Put your MP3 files inside the `songs/` folder.
+1. Put your MP3 files in the `songs/` folder.
 2. Open a terminal in the project directory.
-3. Start the application:
+3. Start the app:
+
    ```bash
    node player.js
    ```
-4. Use the keyboard controls below to select and play music.
+
+4. Select a song and press **Enter** to start playing.
 
 ## Keyboard controls
 
 | Key | Action |
 | --- | --- |
-| ↑ / ↓ | Select a song |
-| Enter | Play selected song |
-| P | Pause |
-| R | Resume |
-| S | Stop |
-| Esc | Exit |
+| ↑ / ↓ | Highlight the previous / next song in the menu |
+| Enter | Play the highlighted song |
+| N or → | Play the next song |
+| B or ← | Play the previous song |
+| P | Pause playback |
+| R | Resume playback |
+| S | Stop playback and return to the menu |
+| Esc | Exit the application |
+
+**Playlist behavior:** Next and Previous wrap around the list. When a song completes normally, the next song starts automatically; manually stopping or skipping does not trigger a second automatic advance. The currently playing song is tracked separately from the highlighted menu selection.
 
 ## How it works
 
-- **`fs.readdirSync()`** reads the filenames inside `songs/`. Array filters keep files with the `.mp3` extension and a readable duration.
-- **`child_process.spawn()`** launches `mpv` in a separate process to play the selected file. Node.js remains free to respond to keyboard input.
-- **mpv IPC** lets Node.js send native pause and resume commands to the audio player. This avoids suspending the entire process with `SIGSTOP`/`SIGCONT`.
-- **`process.stdin` in raw mode** receives keyboard input without waiting for Enter.
-- **`progressBar.js`** reads the duration with `afinfo`, estimates elapsed time with `setInterval()`, and renders a 30-character progress bar.
-- The child process's **`close` event** lets the app clean up playback state and return to the menu.
+1. **Discover songs:** `fs.readdirSync()` reads `songs/`. Array filters select `.mp3` files with a readable, positive duration.
+2. **Start playback:** `child_process.spawn()` launches `mpv` as a separate process so Node.js can keep responding to keyboard events.
+3. **Control playback:** Node.js sends JSON commands to mpv over a local IPC socket to pause or resume audio, rather than suspending the entire process with `SIGSTOP`/`SIGCONT`.
+4. **Handle keys:** `process.stdin` in raw mode delivers keypresses without requiring Enter for every command.
+5. **Track progress:** `progressBar.js` gets the duration using `afinfo`, estimates elapsed time with `setInterval()`, and formats the time and progress bar.
+6. **Advance the playlist:** Next / Previous calculate the new song index. When the active mpv process closes after normal completion, its `close` handler starts the next song. Events from an older, replaced player are ignored so they cannot interrupt the current song.
 
 ### Progress calculation
 
 ```text
-progress = elapsedSeconds / totalSeconds
-percentage = floor(progress × 100)
+progress     = elapsedSeconds / totalSeconds
+percentage   = floor(progress × 100)
 filledBlocks = floor(progress × 30)
 ```
 
-The displayed progress is **estimated** from a JavaScript timer; it is not an exact reading of mpv's playback position.
+The bar is **estimated from a JavaScript timer**, not synchronized to mpv's actual playback position, so small differences may occur.
 
-## Why use mpv?
+## Why mpv?
 
-The original implementation used macOS `afplay` and process signals to pause and resume. Suspending the whole audio process can cause playback glitches. **mpv** supports native pause/resume control through IPC, so the application can control playback without suspending its process.
+The original player used macOS `afplay` and process signals to pause and resume. Suspending an entire audio process may cause glitches or delayed pauses. **mpv** exposes playback controls through IPC, allowing the app to pause and resume the audio directly.
 
 ## Troubleshooting
 
-- **`Cannot find module './player'` or `getProgress is not a function`:** Verify that `player.js` is the main file, `progressBar.js` exports `getProgress`, and `player.js` imports `./progressbar` rather than itself.
-- **`spawn mpv ENOENT`:** Install mpv with `brew install mpv`, then run `mpv --version`.
-- **No songs listed:** Confirm that the `songs/` directory exists and contains readable MP3 files.
-- **Keyboard input does not work:** Run the app in an interactive terminal, not an output-only console.
-- **Playback or progress differs slightly:** The progress display is timer-based, and output-device audio buffering may introduce a small pause/resume delay.
+| Problem | What to check |
+| --- | --- |
+| `Cannot find module './progressBar'` | Confirm the progress module's filename and match its capitalization in `require()`; use `./progressbar` if that is the actual name. |
+| `getProgress is not a function` | Confirm that the progress module defines and exports `getProgress`, and that `player.js` is not importing itself. |
+| `spawn mpv ENOENT` | Install mpv with `brew install mpv`, then verify `mpv --version`. |
+| No songs appear | Check that `songs/` exists, contains MP3 files, and the files have readable durations. |
+| Keyboard shortcuts do not respond | Run `node player.js` in an interactive terminal. |
+| The progress bar differs slightly from the audio | The progress is timer-based; device buffering and timer delays can cause minor differences. |
+| Auto-next does not work | Verify that the current song finishes normally and the updated playlist / `close`-handler code is present in `player.js`. |
 
 ## Technologies and concepts
 
-JavaScript, Node.js, CommonJS modules (`require`/`module.exports`), File System (`fs`), child processes (`spawn` and `spawnSync`), event listeners, terminal input/output, timers, and macOS audio utilities.
+**JavaScript**, **Node.js**, CommonJS (`require` / `module.exports`), `fs`, `path`, `os`, `net`, `child_process` (`spawn` / `spawnSync`), **mpv IPC**, event listeners, raw terminal input, asynchronous child processes, timers, and playlist index management.
