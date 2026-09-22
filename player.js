@@ -20,6 +20,10 @@ let currentPlayer = null;
 // Current song
 let currentSong = null;
 
+// Index of the song currently being played. This is separate from the
+// highlighted menu selection so navigation always follows playback.
+let currentSongIndex = null;
+
 // Pause state
 let isPaused = false;
 
@@ -222,6 +226,7 @@ function killCurrentPlayer() {
     // Reset player state
     currentPlayer = null;
     currentSong = null;
+    currentSongIndex = null;
     currentSocketPath = null;
 
     isPaused = false;
@@ -264,12 +269,26 @@ function exitPlayer() {
     process.exit(0);
 }
 
-// Play selected song
-function playSong(songPath, songName) {
+// Play a song by its playlist index
+function playSong(songIndex) {
+
+    const songFile = mp3Files[songIndex];
+
+    if (!songFile) {
+        return;
+    }
+
+    const songPath = path.join(
+        songsPath,
+        songFile
+    );
+
+    const songName = getSongName(songFile);
 
     // Stop previous song
     killCurrentPlayer();
 
+    currentSongIndex = songIndex;
     currentSong = songName;
     isPaused = false;
     currentScreen = 'player';
@@ -321,6 +340,7 @@ function playSong(songPath, songName) {
 
         currentPlayer = null;
         currentSong = null;
+        currentSongIndex = null;
         currentSocketPath = null;
 
         isPaused = false;
@@ -348,6 +368,9 @@ function playSong(songPath, songName) {
     // Handle song completion
     player.on('close', (code, signal) => {
 
+        const finishedSongIndex = songIndex;
+        const finishedNaturally = code === 0 && signal === null;
+
         // Remove the old socket if it still exists
         fs.unlink(socketPath, () => {});
 
@@ -360,20 +383,28 @@ function playSong(songPath, songName) {
 
         currentPlayer = null;
         currentSong = null;
+        currentSongIndex = null;
         currentSocketPath = null;
 
         isPaused = false;
         controlPending = false;
 
-        currentScreen = 'menu';
+        if (finishedNaturally) {
 
-        renderMenu();
+            // The old player is no longer current, so playSong can replace it
+            // without allowing this close event to affect the new player.
+            const nextSongIndex =
+                (finishedSongIndex + 1) % mp3Files.length;
 
-        if (code === 0 && signal === null) {
+            playSong(nextSongIndex);
 
             console.log('\n✅ Song finished.');
 
         } else {
+
+            currentScreen = 'menu';
+
+            renderMenu();
 
             console.log('\n⏹️ Playback stopped.');
 
@@ -421,6 +452,9 @@ function renderPlayer() {
     console.log('P → Pause');
     console.log('R → Resume');
     console.log('S → Stop');
+
+    console.log('N / → → Next song');
+    console.log('B / ← → Previous song');
 
     console.log('↑ ↓ → Select another song');
     console.log('ESC → Exit');
@@ -488,6 +522,42 @@ function resumeSong() {
     });
 }
 
+// Play the next song relative to the song currently being played
+function nextSong() {
+
+    if (currentSongIndex === null) {
+
+        console.log(
+            '\n❌ No song is currently playing.'
+        );
+
+        return;
+    }
+
+    const nextSongIndex =
+        (currentSongIndex + 1) % mp3Files.length;
+
+    playSong(nextSongIndex);
+}
+
+// Play the previous song relative to the song currently being played
+function previousSong() {
+
+    if (currentSongIndex === null) {
+
+        console.log(
+            '\n❌ No song is currently playing.'
+        );
+
+        return;
+    }
+
+    const previousSongIndex =
+        (currentSongIndex - 1 + mp3Files.length) % mp3Files.length;
+
+    playSong(previousSongIndex);
+}
+
 // Stop song
 function stopSong() {
 
@@ -501,6 +571,8 @@ function stopSong() {
     }
 
     killCurrentPlayer();
+
+    currentSongIndex = null;
 
     currentScreen = 'menu';
 
@@ -573,6 +645,9 @@ function renderMenu() {
     console.log('R → Resume');
     console.log('S → Stop');
 
+    console.log('N / → → Next song');
+    console.log('B / ← → Previous song');
+
     console.log('ESC → Exit');
 
     console.log(
@@ -632,17 +707,7 @@ function handleKey(key) {
         key === '\n'
     ) {
 
-        const selectedSong = mp3Files[selected];
-
-        const songPath = path.join(
-            songsPath,
-            selectedSong
-        );
-
-        playSong(
-            songPath,
-            getSongName(selectedSong)
-        );
+        playSong(selected);
 
         return;
     }
@@ -674,6 +739,28 @@ function handleKey(key) {
         return;
     }
 
+    // Next song
+    if (
+        input === 'n' ||
+        key === '\x1b[C'
+    ) {
+
+        nextSong();
+
+        return;
+    }
+
+    // Previous song
+    if (
+        input === 'b' ||
+        key === '\x1b[D'
+    ) {
+
+        previousSong();
+
+        return;
+    }
+
     // Select song using number keys
     const userInput = Number(input);
 
@@ -686,17 +773,7 @@ function handleKey(key) {
 
         selected = userInput - 1;
 
-        const selectedSong = mp3Files[selected];
-
-        const songPath = path.join(
-            songsPath,
-            selectedSong
-        );
-
-        playSong(
-            songPath,
-            getSongName(selectedSong)
-        );
+        playSong(selected);
     }
 }
 
